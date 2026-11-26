@@ -3,19 +3,17 @@
  * (c) 2026 ridojr. All rights reserved.
  *
  * SETUP
- * 1. Create a Google Sheet (e.g. "CNHS Enrolment"). Open Extensions > Apps Script.
- * 2. Paste this file as Code.gs and save.
- * 3. Deploy > New deployment > Web app.
- *      Execute as: Me
- *      Who has access: Anyone
- * 4. Authorize, copy the Web App URL, paste it into SCRIPT_URL in index.html.
- * Uploaded PSA Birth Certificates and Report Cards go to a Drive folder
- * named "CNHS Enrolment Uploads"; links are written to the sheet.
- * Re-deploy (new version) after any edit to this file.
+ * 1. Open your Google Sheet > Extensions > Apps Script. Paste this file as Code.gs and save.
+ * 2. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone.
+ * 3. Paste the Web App URL into SCRIPT_URL in index.html.
+ * After editing this file: Deploy > Manage deployments > Edit > New version > Deploy.
+ *
+ * Each LRN can enrol only once. A repeated LRN is rejected before anything is saved.
  */
 
 var SHEET_NAME = "Enrolments";
 var FOLDER_NAME = "CNHS Enrolment Uploads";
+var LRN_COL = 7, PHONE_COL = 16;
 var HEADERS = ["Timestamp","Reference","School Year","Grade","Strand","Learner Type","LRN",
   "Last Name","First Name","Middle Name","Ext","Sex","Birthdate","Previous School",
   "Guardian","Mobile","Email","Address","PSA Birth Certificate","Report Card","Status","Copyright"];
@@ -26,18 +24,27 @@ function doPost(e) {
   try {
     var d = JSON.parse(e.postData.contents);
     var sheet = getSheet_();
+    var lrn = digits_(d.lrn);
+
+    if (lrn && lrnExists_(sheet, lrn)) {
+      return json_({ ok: false, code: "DUPLICATE_LRN",
+        error: "This LRN has already been used for an enrolment." });
+    }
+
     var folder = getFolder_();
     var sub = folder.createFolder(d.reference + " - " + clean_(d.lastName) + ", " + clean_(d.firstName));
-
     var psa = saveFile_(sub, "PSA Birth Certificate", d.files.psa);
     var card = saveFile_(sub, "Report Card", d.files.card);
 
-    sheet.appendRow([
+    var row = sheet.getLastRow() + 1;
+    sheet.getRange(row, LRN_COL).setNumberFormat("@");
+    sheet.getRange(row, PHONE_COL).setNumberFormat("@");
+    sheet.getRange(row, 1, 1, HEADERS.length).setValues([[
       new Date(), d.reference, d.schoolYear, "Grade " + d.grade, d.strand || "", d.learnerType,
-      "'" + (d.lrn || ""), clean_(d.lastName), clean_(d.firstName), clean_(d.middleName), clean_(d.ext),
-      d.sex, d.birthdate, clean_(d.prevSchool), clean_(d.guardian), "'" + clean_(d.phone),
+      lrn, clean_(d.lastName), clean_(d.firstName), clean_(d.middleName), clean_(d.ext),
+      d.sex, d.birthdate, clean_(d.prevSchool), clean_(d.guardian), clean_(d.phone),
       clean_(d.email), clean_(d.address), psa.getUrl(), card.getUrl(), "Pending", "ridojr"
-    ]);
+    ]]);
     return json_({ ok: true, reference: d.reference });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -46,7 +53,24 @@ function doPost(e) {
   }
 }
 
-function doGet() { return json_({ ok: true, service: "CNHS Enrolment Portal by ridojr" }); }
+// GET ?lrn=123456789012 tells the page early whether the LRN is already used.
+function doGet(e) {
+  var lrn = digits_(e && e.parameter && e.parameter.lrn);
+  if (lrn) return json_({ ok: true, exists: lrnExists_(getSheet_(), lrn) });
+  return json_({ ok: true, service: "CNHS Enrolment Portal by ridojr" });
+}
+
+function lrnExists_(sheet, lrn) {
+  var n = sheet.getLastRow() - 1;
+  if (n < 1) return false;
+  var vals = sheet.getRange(2, LRN_COL, n, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (digits_(vals[i][0]) === lrn) return true;
+  }
+  return false;
+}
+
+function digits_(v) { return String(v == null ? "" : v).replace(/\D/g, ""); }
 
 function saveFile_(folder, label, f) {
   var ext = (f.name.match(/\.[A-Za-z0-9]+$/) || [""])[0];

@@ -44,6 +44,8 @@ input,select,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid va
 #done b{font:700 1.6rem Georgia,serif;color:var(--navy);display:block;margin:8px 0}
 footer{text-align:center;color:var(--mute);font-size:.85rem;padding:20px 16px 36px}
 .sh{display:none}
+.lrnmsg{display:block;min-height:1.2em;font-size:.85rem;font-weight:600;margin-top:4px}
+.lrnmsg.bad{color:var(--bad)}.lrnmsg.good{color:var(--ok)}
 </style>
 </head>
 <body>
@@ -82,7 +84,7 @@ footer{text-align:center;color:var(--mute);font-size:.85rem;padding:20px 16px 36
 <fieldset>
   <legend>Learner information</legend>
   <div class="grid">
-    <label>LRN <span class="hint">(12 digits, if you have one)</span><input name="lrn" inputmode="numeric" maxlength="12" pattern="\d{12}"></label>
+    <label>LRN <span class="hint">(12 digits, if you have one)</span><input name="lrn" inputmode="numeric" maxlength="12" pattern="\d{12}"><span class="lrnmsg" id="lrnMsg" role="alert"></span></label>
     <label>Last name<input name="lastName" required autocomplete="family-name"></label>
     <label>First name<input name="firstName" required autocomplete="given-name"></label>
     <label>Middle name<input name="middleName"></label>
@@ -162,6 +164,20 @@ document.querySelectorAll(".drop").forEach(box => {
   box.addEventListener("drop", e => take(e.dataTransfer.files[0]));
 });
 
+const lrnIn = form.lrn, lrnMsg = document.getElementById("lrnMsg");
+let lrnTaken = false;
+lrnIn.addEventListener("input", async () => {
+  lrnIn.value = lrnIn.value.replace(/\D/g, ""); lrnTaken = false; lrnMsg.textContent = ""; lrnMsg.className = "lrnmsg";
+  if (lrnIn.value.length !== 12 || SCRIPT_URL.startsWith("PASTE")) return;
+  const v = lrnIn.value;
+  try {
+    const r = await (await fetch(SCRIPT_URL + "?lrn=" + v)).json();
+    if (lrnIn.value !== v) return;
+    if (r.exists) { lrnTaken = true; lrnMsg.textContent = "This LRN has already been used. It cannot enrol again."; lrnMsg.className = "lrnmsg bad"; }
+    else { lrnMsg.textContent = "LRN is available."; lrnMsg.className = "lrnmsg good"; }
+  } catch (_) {}
+});
+
 const b64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
 
 form.addEventListener("submit", async e => {
@@ -170,6 +186,7 @@ form.addEventListener("submit", async e => {
   if (!form.reportValidity()) return;
   if (!form.querySelector("[name=grade]:checked")) { statusEl.textContent = "Choose a grade level."; return; }
   if (+form.grade.value >= 11 && !form.strand.value) { statusEl.textContent = "Choose a track or strand."; return; }
+  if (lrnTaken) { statusEl.textContent = "This LRN has already been used. It cannot enrol again."; return; }
   if (!files.psa || !files.card) { statusEl.textContent = "Upload both the PSA Birth Certificate and the Report Card."; return; }
   if (SCRIPT_URL.startsWith("PASTE")) { statusEl.textContent = "Portal is not connected to the Google Sheet yet. Set SCRIPT_URL."; return; }
 
@@ -183,13 +200,13 @@ form.addEventListener("submit", async e => {
     statusEl.textContent = "Step 2 of 2: sending and saving. Please wait and do not close this page...";
     const res = await fetch(SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(data) });
     const out = await res.json();
-    if (!out.ok) throw new Error(out.error || "Not saved");
+    if (!out.ok) { const x = new Error(out.error || "Not saved"); x.code = out.code; throw x; }
     form.style.display = "none"; statusEl.textContent = "";
     document.getElementById("ref").textContent = data.reference;
     const d = document.getElementById("done"); d.style.display = "block"; d.focus();
     scrollTo({ top: 0 });
   } catch (err) {
-    statusEl.style.color = "var(--bad)"; statusEl.textContent = "Not saved. We could not confirm that your enrolment was received. Check your internet, then press Submit again, or contact the school if this keeps happening."; btn.disabled = false;
+    statusEl.style.color = "var(--bad)"; statusEl.textContent = err.code === "DUPLICATE_LRN" ? "Not accepted. This LRN has already been used to enrol, and each LRN can enrol only once. Check the number, or contact the school if you think this is a mistake." : "Not saved. We could not confirm that your enrolment was received. Check your internet, then press Submit again, or contact the school if this keeps happening."; btn.disabled = false;
   }
 });
 </script>
