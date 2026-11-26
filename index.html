@@ -55,8 +55,8 @@ footer{text-align:center;color:var(--mute);font-size:.85rem;padding:20px 16px 36
 
 <main>
 <div id="done" role="status" tabindex="-1">
-  <h2>Enrolment received</h2>
-  <p>Keep this reference number:</p>
+  <h2>Enrolment sent and saved</h2>
+  <p>Your enrolment and both documents were saved in the school records. Keep this reference number:</p>
   <b id="ref"></b>
   <p>The school will review your documents and contact you using the number you provided.</p>
 </div>
@@ -74,7 +74,7 @@ footer{text-align:center;color:var(--mute);font-size:.85rem;padding:20px 16px 36
   </div>
   <div class="grid" style="margin-top:14px">
     <label>School year<select name="schoolYear"><option>2026-2027</option><option>2027-2028</option></select></label>
-    <label>Learner type<select name="learnerType" required><option value="">Select</option><option>New (incoming Grade 7)</option><option>Transferee</option><option>Returning</option><option>Balik-Aral</option></select></label>
+    <label>Learner type<select name="learnerType" required><option value="">Select</option><option>New (incoming Grade 7)</option><option>Transferee</option><option>Old Student</option><option>Returning</option><option>Balik-Aral</option></select></label>
     <label class="sh" id="strandBox">Track / strand (Grades 11-12)<select name="strand"><option value="">Select</option><option>Academic: STEM</option><option>Academic: ABM</option><option>Academic: HUMSS</option><option>Academic: GAS</option><option>TVL</option><option>Arts and Design</option><option>Sports</option></select></label>
   </div>
 </fieldset>
@@ -174,19 +174,22 @@ form.addEventListener("submit", async e => {
   if (SCRIPT_URL.startsWith("PASTE")) { statusEl.textContent = "Portal is not connected to the Google Sheet yet. Set SCRIPT_URL."; return; }
 
   const btn = document.getElementById("go");
-  btn.disabled = true; statusEl.style.color = "var(--ink)"; statusEl.textContent = "Uploading. Please wait and do not close this page...";
+  btn.disabled = true; statusEl.style.color = "var(--ink)"; statusEl.textContent = "Step 1 of 2: preparing your files...";
   try {
     const data = Object.fromEntries(new FormData(form));
     data.reference = "CNHS-" + new Date().getFullYear() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
     data.files = {};
     for (const k of ["psa","card"]) data.files[k] = { name: files[k].name, type: files[k].type, data: await b64(files[k]) };
-    await fetch(SCRIPT_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(data) });
+    statusEl.textContent = "Step 2 of 2: sending and saving. Please wait and do not close this page...";
+    const res = await fetch(SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(data) });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "Not saved");
     form.style.display = "none"; statusEl.textContent = "";
     document.getElementById("ref").textContent = data.reference;
     const d = document.getElementById("done"); d.style.display = "block"; d.focus();
     scrollTo({ top: 0 });
   } catch (err) {
-    statusEl.style.color = "var(--bad)"; statusEl.textContent = "Upload failed. Check your internet and try again."; btn.disabled = false;
+    statusEl.style.color = "var(--bad)"; statusEl.textContent = "Not saved. We could not confirm that your enrolment was received. Check your internet, then press Submit again, or contact the school if this keeps happening."; btn.disabled = false;
   }
 });
 </script>
