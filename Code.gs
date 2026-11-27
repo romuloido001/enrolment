@@ -24,7 +24,7 @@ function doPost(e) {
   try {
     var d = JSON.parse(e.postData.contents);
     var sheet = getSheet_();
-    var lrn = digits_(d.lrn);
+    var lrn = lrnKey_(d.lrn);
 
     if (lrn && lrnExists_(sheet, lrn)) {
       return json_({ ok: false, code: "DUPLICATE_LRN",
@@ -55,9 +55,9 @@ function doPost(e) {
 
 // GET ?lrn=123456789012 tells the page early whether the LRN is already used.
 function doGet(e) {
-  var lrn = digits_(e && e.parameter && e.parameter.lrn);
-  if (lrn) return json_({ ok: true, exists: lrnExists_(getSheet_(), lrn) });
-  return json_({ ok: true, service: "CNHS Enrolment Portal by ridojr" });
+  var lrn = lrnKey_(e && e.parameter && e.parameter.lrn);
+  if (lrn) return json_({ ok: true, version: 2, exists: lrnExists_(getSheet_(), lrn) });
+  return json_({ ok: true, version: 2, service: "CNHS Enrolment Portal by ridojr" });
 }
 
 function lrnExists_(sheet, lrn) {
@@ -65,9 +65,16 @@ function lrnExists_(sheet, lrn) {
   if (n < 1) return false;
   var vals = sheet.getRange(2, LRN_COL, n, 1).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (digits_(vals[i][0]) === lrn) return true;
+    if (lrnKey_(vals[i][0]) === lrn) return true;
   }
   return false;
+}
+
+// Digits only, padded to 12 so a leading zero lost by the sheet still matches.
+function lrnKey_(v) {
+  var s = digits_(v);
+  while (s && s.length < 12) s = "0" + s;
+  return s;
 }
 
 function digits_(v) { return String(v == null ? "" : v).replace(/\D/g, ""); }

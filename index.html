@@ -135,7 +135,7 @@ footer{text-align:center;color:var(--mute);font-size:.85rem;padding:20px 16px 36
 
 <script>
 // Paste your deployed Google Apps Script Web App URL here (see Code.gs).
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYSYlK40r7lB_4HlR0k0_KPZBUBNFIakR06Qfzb4KNiqVO1Lv4Rn3-DbPyxBoLmZWeqQ/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyu9NfJq1TulwW3EB8XfCCw3iDuaVpXhhtLOsYhUvjVk_aFmPTMNgvjI5z_6gqlqr_1/exec";
 const MAX = 5 * 1024 * 1024, OK = ["application/pdf","image/jpeg","image/png"];
 const files = {};
 const form = document.getElementById("form"), statusEl = document.getElementById("status");
@@ -166,16 +166,25 @@ document.querySelectorAll(".drop").forEach(box => {
 
 const lrnIn = form.lrn, lrnMsg = document.getElementById("lrnMsg");
 let lrnTaken = false;
+const OLD = "The portal backend is out of date. Paste the newest Code.gs into Apps Script and deploy a new version.";
+async function checkLrn(v) {
+  const r = await (await fetch(SCRIPT_URL + "?lrn=" + v)).json();
+  if (typeof r.exists !== "boolean") throw new Error("outdated");
+  return r.exists;
+}
 lrnIn.addEventListener("input", async () => {
   lrnIn.value = lrnIn.value.replace(/\D/g, ""); lrnTaken = false; lrnMsg.textContent = ""; lrnMsg.className = "lrnmsg";
   if (lrnIn.value.length !== 12 || SCRIPT_URL.startsWith("PASTE")) return;
   const v = lrnIn.value;
   try {
-    const r = await (await fetch(SCRIPT_URL + "?lrn=" + v)).json();
+    const taken = await checkLrn(v);
     if (lrnIn.value !== v) return;
-    if (r.exists) { lrnTaken = true; lrnMsg.textContent = "This LRN has already been used. It cannot enrol again."; lrnMsg.className = "lrnmsg bad"; }
-    else { lrnMsg.textContent = "LRN is available."; lrnMsg.className = "lrnmsg good"; }
-  } catch (_) {}
+    lrnTaken = taken;
+    lrnMsg.textContent = taken ? "This LRN has already been used. It cannot enrol again." : "LRN is available.";
+    lrnMsg.className = "lrnmsg " + (taken ? "bad" : "good");
+  } catch (e) {
+    if (e.message === "outdated") { lrnMsg.textContent = OLD; lrnMsg.className = "lrnmsg bad"; }
+  }
 });
 
 const b64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
@@ -186,7 +195,13 @@ form.addEventListener("submit", async e => {
   if (!form.reportValidity()) return;
   if (!form.querySelector("[name=grade]:checked")) { statusEl.textContent = "Choose a grade level."; return; }
   if (+form.grade.value >= 11 && !form.strand.value) { statusEl.textContent = "Choose a track or strand."; return; }
-  if (lrnTaken) { statusEl.textContent = "This LRN has already been used. It cannot enrol again."; return; }
+  if (form.lrn.value) {
+    statusEl.style.color = "var(--ink)"; statusEl.textContent = "Checking LRN...";
+    try { lrnTaken = await checkLrn(form.lrn.value); }
+    catch (e) { if (e.message === "outdated") { statusEl.style.color = "var(--bad)"; statusEl.textContent = OLD; return; } }
+    statusEl.style.color = "var(--bad)";
+  }
+  if (lrnTaken) { statusEl.textContent = "Not accepted. This LRN has already been used to enrol, and each LRN can enrol only once."; return; }
   if (!files.psa || !files.card) { statusEl.textContent = "Upload both the PSA Birth Certificate and the Report Card."; return; }
   if (SCRIPT_URL.startsWith("PASTE")) { statusEl.textContent = "Portal is not connected to the Google Sheet yet. Set SCRIPT_URL."; return; }
 
